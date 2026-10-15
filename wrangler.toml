@@ -4,13 +4,14 @@ main = "src/index.js"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+keep_vars = true
+
 # 定时任务配置（UTC）
-# - 每月1号UTC零点：执行数据清理（表轮换）
-# - 每月8号UTC零点：清理旧的 metrics_history_old 表
-# - 每分钟：执行离线节点检测
+# - 每分钟：执行离线节点、资源告警
+# - 每小时：合并执行其他定时任务（表轮换、旧表清理、按配置时区/小时触发服务器到期检测）
 # - 注意同步修改deploy和index.js scheduled函数里面的值
 [triggers]
-crons = ["* * 1 * *", "* * 8 * *", "*/1 * * * *"]
+crons = ["*/1 * * * *", "0 * * * *"]
 
 [assets]
 directory = "./dist"
@@ -26,7 +27,6 @@ database_name = "server-monitor-db"
 [[durable_objects.bindings]]
 name = "METRICS_BROADCASTER"
 class_name = "MetricsBroadcaster"
-script_name = "cf-server-monitor"
 
 [[migrations]]
 tag = "v1"
@@ -35,4 +35,4 @@ new_sqlite_classes = ["MetricsBroadcaster"]
 # 开发服务器配置
 [dev]
 port = 8787
-local_protocol = "http"
+local_protocol = "https"

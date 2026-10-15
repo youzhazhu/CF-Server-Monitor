@@ -1,10 +1,11 @@
+export const DEFAULT_SITE_TITLE = 'Cloudflare Server Monitor'
+export const FRONTEND_WS_TIMEOUT_MINUTES_MAX = 1440
+
 export const TIME = {
   ONLINE_THRESHOLD_MS: 300000,
-  POLL_INTERVAL_MS: 60000,
   RECONNECT_INITIAL_DELAY_MS: 1000,
   RECONNECT_MAX_DELAY_MS: 30000,
-  MAX_RECONNECT_ATTEMPTS: 10,
-  CHART_DATA_RETENTION_MS: 3600000
+  MAX_RECONNECT_ATTEMPTS: 10
 }
 
 export const CHART = {
@@ -14,17 +15,20 @@ export const CHART = {
   MAX_TICKS_HOUR: 12
 }
 
-export const GAP_BREAK = {
-  LESS_THAN_1_HOUR: 5 * 60 * 1000,
-  LESS_THAN_6_HOURS: 10 * 60 * 1000,
-  LESS_THAN_12_HOURS: 15 * 60 * 1000,
-  LESS_THAN_24_HOURS: 20 * 60 * 1000,
-  MORE_THAN_24_HOURS: 30 * 60 * 1000
+export const HISTORY = {
+  LONG_RANGE_POINT_OPTIONS: [60, 120, 180, 240],
+  DEFAULT_LONG_RANGE_POINTS: 120
+}
+
+export const LATENCY_WINDOW = {
+  POINTS: 20,
+  HOURS: 2
 }
 
 export const PING = {
-  GOOD_THRESHOLD: 100,
-  WARNING_THRESHOLD: 200
+  GOOD_THRESHOLD: 80,
+  WARNING_THRESHOLD: 160,
+  CRITICAL_THRESHOLD: 240
 }
 
 export const STORAGE = {
@@ -32,29 +36,6 @@ export const STORAGE = {
   LANGUAGE_PREFERENCE: 'language_preference',
   VIEW_PREFERENCE: 'monitor_preferred_view',
   JWT_TOKEN: 'jwt_token',
-  TURNSTILE_TOKEN: 'turnstile_token'
-}
-
-export const STATUS = {
-  ONLINE: 'online',
-  OFFLINE: 'offline'
-}
-
-export const COLORS = {
-  ACCENT_GREEN: 'var(--accent-green)',
-  ACCENT_RED: 'var(--accent-red)',
-  ACCENT_CYAN: 'var(--accent-cyan)',
-  ACCENT_PURPLE: 'var(--accent-purple)',
-  ACCENT_YELLOW: 'var(--accent-yellow)',
-  TEXT_MUTED: 'var(--text-muted)'
-}
-
-export default {
-  TIME,
-  CHART,
-  GAP_BREAK,
-  PING,
-  STORAGE,
-  STATUS,
-  COLORS
+  TURNSTILE_TOKEN: 'turnstile_token',
+  TURNSTILE_VERIFIED: 'turnstile_verified'
 }

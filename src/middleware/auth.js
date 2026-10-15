@@ -1,13 +1,9 @@
 const ALGORITHM = { name: 'HMAC', hash: 'SHA-256' };
+import { verifyPasswordHash } from '../utils/common.js';
+import { isValidJwtSecret } from '../utils/settings.js';
 
-async function md5Hash(input) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  const hash = await crypto.subtle.digest('MD5', data);
-  return Array.from(new Uint8Array(hash))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+export const AUTH_COOKIE_NAME = 'cfsm_auth';
+const TOKEN_QUERY_KEYS = ['token', 'auth_token', 'ws_token'];
 
 async function generateKeyFromSecret(secret) {
   const encoder = new TextEncoder();
@@ -69,43 +65,39 @@ async function verifyJwt(token, secret) {
 }
 
 function getJwtSecret(env, sys) {
-  if (sys && sys.jwt_secret && sys.jwt_secret.length >= 32) {
+  if (isValidJwtSecret(sys?.jwt_secret)) {
     return sys.jwt_secret;
   }
-  
+
   const fallback = env.API_SECRET || 'default_jwt_secret_for_server_monitor';
-  const padded = fallback.padEnd(32, 'x');
-  
-  return padded.substring(0, 64);
+  return fallback.padEnd(32, 'x').substring(0, 64);
 }
 
-export async function generateToken(env, sys) {
-  const payload = {
-    sub: 'admin',
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 604800
-  };
-  
-  const secret = getJwtSecret(env, sys);
-  return signJwt(payload, secret);
-}
-
-export async function checkAuth(request, env, sys) {
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader) {
-    return false;
+function getCookieValue(request, name) {
+  const cookie = request?.headers?.get('Cookie') || '';
+  const prefix = `${name}=`;
+  for (const part of cookie.split(';')) {
+    const item = part.trim();
+    if (!item.startsWith(prefix)) continue;
+    try {
+      return decodeURIComponent(item.slice(prefix.length));
+    } catch (_) {
+      return item.slice(prefix.length);
+    }
   }
+  return '';
+}
 
+function extractBearerToken(request) {
+  const authHeader = request?.headers?.get('Authorization') || '';
   const parts = authHeader.trim().split(/\s+/);
-  const scheme = parts[0];
-  const token = parts[1];
+  return parts[0] === 'Bearer' && parts[1] ? parts[1] : '';
+}
 
-  if (scheme !== 'Bearer' || !token) {
-    return false;
-  }
-
+async function verifyToken(token, env, sys) {
+  if (!token) return false;
   const secret = getJwtSecret(env, sys);
-  
+
   try {
     const payload = await verifyJwt(token, secret);
     return payload !== null;
@@ -115,11 +107,59 @@ export async function checkAuth(request, env, sys) {
   }
 }
 
+export async function generateToken(env, sys) {
+  const payload = {
+    sub: 'admin',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 604800
+  };
+
+  const secret = getJwtSecret(env, sys);
+  return signJwt(payload, secret);
+}
+
+export async function checkAuth(request, env, sys) {
+  if (await verifyToken(extractBearerToken(request), env, sys)) {
+    return true;
+  }
+  return verifyToken(getCookieValue(request, AUTH_COOKIE_NAME), env, sys);
+}
+
+export async function checkWebSocketAuth(request, env, sys) {
+  if (await checkAuth(request, env, sys)) {
+    return true;
+  }
+
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch (_) {
+    return false;
+  }
+
+  for (const key of TOKEN_QUERY_KEYS) {
+    if (await verifyToken(url.searchParams.get(key), env, sys)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function buildAuthCookie(request, token, maxAge = 604800) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `${AUTH_COOKIE_NAME}=${encodeURIComponent(token || '')}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure}`;
+}
+
+export function buildClearAuthCookie(request) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `${AUTH_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`;
+}
+
 export async function validateCredentials(request, env, sys) {
   try {
     const authHeader = request.headers.get('Authorization');
     if (!authHeader) {
-      return false;
+      return { valid: false, needsPasswordUpgrade: false };
     }
 
     const parts = authHeader.trim().split(/\s+/);
@@ -127,19 +167,19 @@ export async function validateCredentials(request, env, sys) {
     const encoded = parts[1];
 
     if (scheme !== 'Basic' || !encoded) {
-      return false;
+      return { valid: false, needsPasswordUpgrade: false };
     }
 
     let decoded;
     try {
       decoded = atob(encoded);
     } catch (e) {
-      return false;
+      return { valid: false, needsPasswordUpgrade: false };
     }
 
     const idx = decoded.indexOf(':');
     if (idx === -1) {
-      return false;
+      return { valid: false, needsPasswordUpgrade: false };
     }
 
     const username = decoded.slice(0, idx);
@@ -152,19 +192,27 @@ export async function validateCredentials(request, env, sys) {
         : 'admin';
 
     if (sys && sys.password && sys.password.length > 0) {
-      const hashedPassword = await md5Hash(password);
-      return username === validUsername && hashedPassword === sys.password;
+      if (username !== validUsername) {
+        return { valid: false, needsPasswordUpgrade: false };
+      }
+
+      const result = await verifyPasswordHash(password, sys.password);
+      return {
+        valid: result.valid,
+        needsPasswordUpgrade: result.needsRehash === true
+      };
     }
 
-    return (
+    const valid = (
       typeof env.API_SECRET === 'string' &&
       env.API_SECRET.length > 0 &&
       username === validUsername &&
       password === env.API_SECRET
     );
+    return { valid, needsPasswordUpgrade: false };
   } catch (e) {
     console.error('Credential validation error:', e);
-    return false;
+    return { valid: false, needsPasswordUpgrade: false };
   }
 }
 

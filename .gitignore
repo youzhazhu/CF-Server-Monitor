@@ -2,12 +2,13 @@
 test/mock-data.sql
 public/cf_probe.log
 public/cf_probe_config.json
+public/cf_probe_traffic.dat
 public/__pycache__/
-public/demo.css
+theme/
+public/config.json
 
 # 依赖
 node_modules/
-package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
@@ -22,6 +23,9 @@ pnpm-lock.yaml
 *.swp
 *.swo
 *~
+.trae/
+.mimocode/
+.vscode/
 
 # 日志
 *.log
